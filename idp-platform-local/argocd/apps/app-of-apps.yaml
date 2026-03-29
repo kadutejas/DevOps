@@ -10,8 +10,6 @@
 #   3. Each *.yaml in apps/ becomes a managed Application (e.g. monitoring)
 #   4. Any new app you commit to apps/ is auto-deployed — no kubectl needed
 #
-# BEFORE USING: replace YOUR_GITHUB_USERNAME with your actual GitHub username.
-
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -25,11 +23,10 @@ spec:
   project: default
 
   source:
-    # TODO: replace with your actual repo URL before running bootstrap.sh
-    repoURL: https://github.com/TejasKadu99/idp-platform-local
+    repoURL: https://github.com/kadutejas/DevOps
     targetRevision: HEAD
-    # ArgoCD will recursively find all Application manifests in this path
-    path: argocd/apps
+    # Path is relative to the repo root — IDP files live inside idp-platform-local/
+    path: idp-platform-local/argocd/apps
 
   destination:
     server: https://kubernetes.default.svc
