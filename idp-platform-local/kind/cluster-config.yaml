@@ -1,0 +1,42 @@
+# kind cluster configuration for IDP Platform (local development)
+#
+# WHY 3 nodes: mirrors a minimal real cluster (1 control-plane + 2 workers).
+# Workloads land on workers; the control-plane stays lean so kube-system
+# components don't compete with application pods.
+#
+# WHY extraPortMappings on control-plane: kind nodes are Docker containers.
+# NodePort services listen on every node, but the host can only reach them
+# through mapped ports. Mapping both NodePorts here lets Windows/WSL2 reach
+# the services via plain http://localhost:<port>.
+
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+name: idp-local
+
+nodes:
+  # ── Control-plane ────────────────────────────────────────────────────────
+  - role: control-plane
+    extraPortMappings:
+      # ArgoCD GitOps UI
+      - containerPort: 30000
+        hostPort: 30000
+        protocol: TCP
+      # Grafana dashboards
+      - containerPort: 30001
+        hostPort: 30001
+        protocol: TCP
+
+    # kubeadm patch: tighten the API server to avoid OOM on WSL2
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            # Reduce default watch cache sizes — saves ~200 MB on a dev cluster
+            watch-cache-sizes: ""
+
+  # ── Workers ──────────────────────────────────────────────────────────────
+  # Application workloads (ArgoCD, Prometheus, Grafana) run here; keep
+  # control-plane resources available for cluster management.
+  - role: worker
+  - role: worker

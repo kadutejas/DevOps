@@ -1,0 +1,139 @@
+# Monitoring stack — Prometheus + Grafana + AlertManager
+#
+# WHY kube-prometheus-stack: single Helm chart that ships Prometheus,
+# Grafana, AlertManager, node-exporter, kube-state-metrics, and all the
+# ServiceMonitor/PrometheusRule CRDs — everything wired together out of the box.
+#
+# ArgoCD manages this Helm release. Committing a values change here
+# triggers an automatic re-sync and rolling update — no kubectl needed.
+#
+# Access: http://localhost:30001  (admin / idp-grafana-admin)
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+
+spec:
+  project: default
+
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    # WHY "*": always deploy the latest stable chart version in local dev.
+    # Pin to a specific SemVer (e.g. "58.6.0") once you care about reproducibility.
+    targetRevision: "*"
+
+    helm:
+      # WHY releaseName: controls the prefix on all generated resource names.
+      releaseName: monitoring
+      values: |
+
+        # ── Grafana ───────────────────────────────────────────────────────
+        grafana:
+          # Change this password before exposing the cluster outside localhost
+          adminPassword: "idp-grafana-admin"
+
+          service:
+            type: NodePort
+            # Must match extraPortMappings in kind/cluster-config.yaml
+            nodePort: 30001
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+          # Pre-load the built-in Kubernetes dashboards (node, pod, namespace views)
+          defaultDashboardsEnabled: true
+
+          persistence:
+            # WHY false: dashboards are loaded from ConfigMaps via sidecar;
+            # no PVC means faster cluster teardown/recreate during development.
+            enabled: false
+
+          # Sidecar watches for dashboard ConfigMaps and hot-loads them
+          sidecar:
+            dashboards:
+              enabled: true
+            datasources:
+              enabled: true
+
+        # ── Prometheus ────────────────────────────────────────────────────
+        prometheus:
+          prometheusSpec:
+            # 30s scrape interval — fine for local dev; reduces CPU churn vs 15s default
+            scrapeInterval: "30s"
+            evaluationInterval: "30s"
+
+            # 7 days covers a full sprint; won't blow up local storage
+            retention: "7d"
+
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                # WHY 1Gi: kube-prometheus-stack loads a lot of recording rules;
+                # anything lower risks OOMKill on a busy local cluster.
+                cpu: 500m
+                memory: 1Gi
+
+            # WHY empty storageSpec: no PVC; metrics are ephemeral on this local cluster.
+            # Add a PVC spec here when you want persistence across cluster restarts.
+            storageSpec: {}
+
+            # Scrape all ServiceMonitors across all namespaces without selector restrictions
+            serviceMonitorSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
+
+        # ── AlertManager ──────────────────────────────────────────────────
+        alertmanager:
+          alertmanagerSpec:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+
+        # ── Node Exporter ─────────────────────────────────────────────────
+        # Exposes host-level metrics (CPU, memory, disk) per node
+        prometheus-node-exporter:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+
+        # ── kube-state-metrics ────────────────────────────────────────────
+        # Converts Kubernetes object state (deployments, pods, etc.) into metrics
+        kube-state-metrics:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # WHY ServerSideApply: kube-prometheus-stack generates objects that exceed
+      # the kubectl annotation size limit; SSA sidesteps that restriction.
+      - ServerSideApply=true

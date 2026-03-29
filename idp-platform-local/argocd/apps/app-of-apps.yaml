@@ -1,0 +1,43 @@
+# App-of-Apps bootstrap manifest
+#
+# WHY App-of-Apps: Apply this ONCE manually after ArgoCD is installed.
+# From that point ArgoCD watches argocd/apps/ in your Git repo and
+# self-manages every Application file it finds there — pure GitOps.
+#
+# HOW it works:
+#   1. bootstrap.sh applies this file with kubectl apply -f
+#   2. ArgoCD syncs argocd/apps/ from Git
+#   3. Each *.yaml in apps/ becomes a managed Application (e.g. monitoring)
+#   4. Any new app you commit to apps/ is auto-deployed — no kubectl needed
+#
+# BEFORE USING: replace YOUR_GITHUB_USERNAME with your actual GitHub username.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-of-apps
+  namespace: argocd
+  annotations:
+    # sync-wave -1 ensures this app is reconciled before child apps
+    argocd.argoproj.io/sync-wave: "-1"
+
+spec:
+  project: default
+
+  source:
+    # TODO: replace with your actual repo URL before running bootstrap.sh
+    repoURL: https://github.com/TejasKadu99/idp-platform-local
+    targetRevision: HEAD
+    # ArgoCD will recursively find all Application manifests in this path
+    path: argocd/apps
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      prune: true      # Remove ArgoCD apps when their manifests are deleted from Git
+      selfHeal: true   # Re-apply if someone manually changes something in the cluster
+    syncOptions:
+      - CreateNamespace=true

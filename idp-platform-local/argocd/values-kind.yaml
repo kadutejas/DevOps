@@ -1,0 +1,106 @@
+# ArgoCD Helm values — tuned for kind / local development
+#
+# Design goals:
+#   1. Single-replica everything — saves ~800 MB vs HA defaults (critical on 16 GB WSL2)
+#   2. NodePort on 30000 — reachable at http://localhost:30000 via kind port mapping
+#   3. Insecure mode   — no TLS termination; acceptable for localhost-only traffic
+#   4. Dex disabled    — no SSO needed locally; removes an extra deployment
+#   5. Conservative resource limits — leaves headroom for Prometheus + Grafana
+
+# ── Global ────────────────────────────────────────────────────────────────
+global:
+  # Single replica is set per-component below for explicitness
+  image:
+    tag: ""   # Empty = chart default; pin to "v2.12.x" here if you need reproducibility
+
+# ── Server config params ──────────────────────────────────────────────────
+configs:
+  params:
+    # WHY insecure: kind sits behind localhost; TLS overhead isn't worth it.
+    # Never set this on a cluster reachable from outside your machine.
+    server.insecure: "true"
+
+# ── ArgoCD API / UI server ────────────────────────────────────────────────
+server:
+  replicas: 1
+
+  service:
+    type: NodePort
+    # Must match the containerPort in kind/cluster-config.yaml extraPortMappings
+    nodePortHttp: 30000
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+# ── Application controller ────────────────────────────────────────────────
+# WHY higher limits: the controller reconciles every app continuously.
+# Too low a memory limit causes OOMKill loops when managing many resources.
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ── Repo server ───────────────────────────────────────────────────────────
+# Clones repos, renders Helm/Kustomize templates. Needs enough memory for
+# the kube-prometheus-stack chart which generates hundreds of objects.
+repoServer:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 512Mi
+
+# ── ApplicationSet controller ─────────────────────────────────────────────
+applicationSet:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# ── Notifications controller ──────────────────────────────────────────────
+notifications:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# ── Redis (internal cache) ────────────────────────────────────────────────
+redis:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# ── Dex (SSO connector) ───────────────────────────────────────────────────
+# WHY disabled: no external identity provider in local dev.
+# Re-enable and configure when you add SSO (GitHub OAuth, etc.).
+dex:
+  enabled: false
+
+# ── CRDs ─────────────────────────────────────────────────────────────────
+crds:
+  # Let the chart manage CRD lifecycle so upgrades are handled automatically
+  install: true
+  keep: false   # Remove CRDs when chart is uninstalled (clean local teardown)
