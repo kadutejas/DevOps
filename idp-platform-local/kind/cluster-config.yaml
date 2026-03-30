@@ -25,6 +25,10 @@ nodes:
       - containerPort: 30001
         hostPort: 30001
         protocol: TCP
+      # Backstage Developer Portal
+      - containerPort: 30002
+        hostPort: 30002
+        protocol: TCP
 
     # kubeadm patch: tighten the API server to avoid OOM on WSL2
     kubeadmConfigPatches:

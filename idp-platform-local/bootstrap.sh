@@ -114,7 +114,7 @@ ARGOCD_PASSWORD=$(
 cat <<EOF
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  IDP Platform — Phase 1 Bootstrap Complete
+  IDP Platform — Phase 1 + 2 Bootstrap Complete
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   ArgoCD UI  →  http://localhost:30000
@@ -126,20 +126,25 @@ cat <<EOF
                username : admin
                password : idp-grafana-admin
 
+  Backstage  →  http://localhost:30002
+               (available ~5 min — image pull + DB init)
+               username : guest  (click "Enter as Guest")
+
   Watch sync progress:
     kubectl get applications -n argocd -w
 
   Check pod health:
     kubectl get pods -n argocd
     kubectl get pods -n monitoring
+    kubectl get pods -n backstage
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Next steps
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  1. Push this repo to GitHub (if not done yet)
-  2. Fix YOUR_GITHUB_USERNAME in argocd/apps/app-of-apps.yaml
-  3. Re-apply:  kubectl apply -f argocd/apps/app-of-apps.yaml
-  4. See roadmap in README.md for Phase 2 (Backstage)
+  1. Open Backstage → http://localhost:30002
+  2. Browse the Catalog — ArgoCD, Grafana, Prometheus
+     and Backstage itself are pre-registered
+  3. See roadmap in README.md for Phase 3 (Kyverno)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EOF

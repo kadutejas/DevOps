@@ -1,0 +1,169 @@
+# Backstage Developer Portal — Phase 2
+#
+# WHY Backstage: it is the developer-facing layer of an IDP.
+# Engineers use it to discover services, read docs, view ownership,
+# and spin up new projects — all from one UI.
+#
+# WHAT this deploys (via the official Backstage Helm chart):
+#   - Backstage app        → http://localhost:30002
+#   - PostgreSQL (bundled) → internal only, no port exposed
+#
+# FIRST-TIME SETUP:
+#   The kind cluster must be recreated so port 30002 is mapped.
+#   Run these commands once, then re-run bootstrap.sh:
+#
+#     kind delete cluster --name idp-local
+#     cd idp-platform-local && ./bootstrap.sh
+#
+#   After that, ArgoCD syncs this file automatically on every git push.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backstage
+  namespace: argocd
+
+spec:
+  project: default
+
+  source:
+    repoURL: https://backstage.github.io/charts
+    chart: backstage
+    # WHY "*": always use the latest chart version in local dev.
+    # Pin to a SemVer (e.g. "1.9.7") once you want reproducibility.
+    targetRevision: "*"
+
+    helm:
+      releaseName: backstage
+      values: |
+
+        # ── Backstage app ─────────────────────────────────────────────────
+        backstage:
+          image:
+            # Official Backstage showcase image — pre-built, no Docker build needed.
+            # It ships with core plugins (catalog, TechDocs, scaffolder) ready to go.
+            registry: ghcr.io
+            repository: backstage/backstage
+            tag: latest
+            pullPolicy: IfNotPresent
+
+          # app-config.yaml content — controls every aspect of Backstage behaviour.
+          # ArgoCD mounts this as a ConfigMap inside the pod on every sync.
+          appConfig:
+            app:
+              title: IDP Platform
+              # Must match the NodePort exposed on localhost
+              baseUrl: http://localhost:30002
+
+            backend:
+              baseUrl: http://localhost:30002
+              listen:
+                port: 7007
+                host: "0.0.0.0"   # bind to all interfaces inside the container
+              csp:
+                # WHY connect-src: Backstage UI makes XHR calls to its own backend.
+                # This allowlist prevents the browser from blocking them.
+                connect-src: ["'self'", "http:", "https:"]
+              cors:
+                origin: http://localhost:30002
+                methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+                credentials: true
+              database:
+                # WHY pg: Backstage stores catalog, user, and plugin data in
+                # PostgreSQL. The bundled Bitnami chart (enabled below) provides it.
+                client: pg
+                connection:
+                  host: ${POSTGRES_HOST}
+                  port: ${POSTGRES_PORT}
+                  user: ${POSTGRES_USER}
+                  password: ${POSTGRES_PASSWORD}
+
+            auth:
+              environment: development
+              providers:
+                # WHY guest: no real SSO needed for local dev.
+                # dangerouslyAllowOutsideDevelopment lets this run without HTTPS.
+                # NEVER use this setting on a publicly reachable cluster.
+                guest:
+                  dangerouslyAllowOutsideDevelopment: true
+
+            catalog:
+              rules:
+                - allow: [Component, System, API, Resource, Location, Group, User]
+              locations:
+                # Pre-load the IDP Platform catalog (ArgoCD, Grafana, Prometheus)
+                # Any new catalog-info.yaml you push to this path auto-appears in Backstage.
+                - type: url
+                  target: https://github.com/kadutejas/DevOps/blob/main/idp-platform-local/backstage/catalog/idp-platform.yaml
+                  rules:
+                    - allow: [System, Component, Resource, Location]
+
+          # Inject PostgreSQL connection details as environment variables.
+          # The ${VAR} placeholders in appConfig above resolve to these at runtime.
+          extraEnvVars:
+            - name: POSTGRES_HOST
+              # WHY "backstage-postgresql": Bitnami chart names the service
+              # <release-name>-postgresql inside the same namespace.
+              value: "backstage-postgresql"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: "backstage"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  # Bitnami chart creates this secret automatically with the
+                  # password set in postgresql.auth.password below.
+                  name: backstage-postgresql
+                  key: password
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              # WHY 1Gi: Backstage loads all catalog entities and plugin bundles
+              # into memory on startup. Less than 512Mi causes OOMKill on first boot.
+              cpu: 500m
+              memory: 1Gi
+
+        # ── Service — NodePort ────────────────────────────────────────────
+        service:
+          type: NodePort
+          ports:
+            backend: 7007
+          nodePorts:
+            # Must match containerPort 30002 in kind/cluster-config.yaml
+            backend: 30002
+
+        # ── PostgreSQL (Bitnami chart bundled as a dependency) ────────────
+        postgresql:
+          enabled: true
+          auth:
+            username: backstage
+            # WHY hardcoded: this is a local-only dev cluster.
+            # Rotate this if you ever expose the cluster outside localhost.
+            password: "backstage-pg-dev"
+            database: backstage
+          primary:
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backstage
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # WHY ServerSideApply: the Backstage chart generates objects that can
+      # exceed kubectl's annotation size limit, same as kube-prometheus-stack.
+      - ServerSideApply=true

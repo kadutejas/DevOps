@@ -1,0 +1,148 @@
+# IDP Platform — Backstage Service Catalog
+#
+# This file registers all components of the IDP Platform into Backstage.
+# Backstage loads it via the URL in argocd/apps/backstage.yaml (catalog.locations).
+#
+# Every time you push a change here, Backstage re-reads the catalog on its
+# next refresh cycle (default: 60s) — no restarts needed.
+#
+# HOW TO READ THIS FILE:
+#   - Kind: System groups related components together
+#   - Kind: Component is a deployable unit (service, website, library, etc.)
+#   - spec.type: the flavour of component (service, website, library, tool)
+#   - spec.lifecycle: production | experimental | deprecated
+#   - spec.owner: the team responsible (matches a Group entity)
+#   - spec.system: which System this component belongs to
+#   - metadata.links: clickable links shown in the Backstage UI
+
+# ── Team ──────────────────────────────────────────────────────────────────
+# Backstage uses Group entities to model teams. Components reference
+# groups via spec.owner. Without this, Backstage shows "unknown owner".
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: devops-team
+  description: Platform & DevOps engineering team
+spec:
+  type: team
+  profile:
+    displayName: DevOps Team
+  children: []
+
+---
+# ── System — IDP Platform ─────────────────────────────────────────────────
+# A System is a logical boundary grouping related components.
+# Think of it as the "product" — the IDP Platform is the product,
+# ArgoCD/Grafana/Backstage are components that make it up.
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: idp-platform
+  description: Internal Developer Platform — local kind cluster
+  tags:
+    - platform
+    - devops
+    - kubernetes
+  links:
+    - url: https://github.com/kadutejas/DevOps
+      title: GitHub Repo
+      icon: github
+spec:
+  owner: devops-team
+
+---
+# ── Component — ArgoCD ────────────────────────────────────────────────────
+# GitOps engine: watches Git and syncs the cluster state.
+# Phase 1 component — deployed via bootstrap.sh.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: argocd
+  description: GitOps continuous delivery engine. Watches the kadutejas/DevOps repo and applies changes to the kind cluster automatically.
+  tags:
+    - gitops
+    - kubernetes
+    - cd
+  links:
+    - url: http://localhost:30000
+      title: ArgoCD UI
+      icon: dashboard
+  annotations:
+    # Standard Backstage annotation: links this component to its GitHub source
+    github.com/project-slug: kadutejas/DevOps
+spec:
+  type: service
+  lifecycle: production
+  owner: devops-team
+  system: idp-platform
+
+---
+# ── Component — Prometheus ────────────────────────────────────────────────
+# Metrics scraper and time-series database.
+# Deployed by monitoring.yaml via kube-prometheus-stack.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: prometheus
+  description: Metrics collection, storage, and alerting. Scrapes all Kubernetes workloads every 30s.
+  tags:
+    - monitoring
+    - metrics
+    - observability
+  annotations:
+    github.com/project-slug: kadutejas/DevOps
+spec:
+  type: service
+  lifecycle: production
+  owner: devops-team
+  system: idp-platform
+  dependsOn:
+    - component:grafana
+
+---
+# ── Component — Grafana ───────────────────────────────────────────────────
+# Visualisation layer — reads from Prometheus and renders dashboards.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: grafana
+  description: Observability dashboards. Pre-loaded with Kubernetes node, pod, and namespace views via ConfigMap sidecar.
+  tags:
+    - monitoring
+    - dashboards
+    - observability
+  links:
+    - url: http://localhost:30001
+      title: Grafana UI
+      icon: dashboard
+  annotations:
+    github.com/project-slug: kadutejas/DevOps
+spec:
+  type: service
+  lifecycle: production
+  owner: devops-team
+  system: idp-platform
+
+---
+# ── Component — Backstage ─────────────────────────────────────────────────
+# This portal itself — meta! Useful for demos to show self-registration.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: backstage
+  description: Developer portal. Service catalog, documentation hub, and scaffolder for the IDP Platform.
+  tags:
+    - platform
+    - developer-portal
+    - idp
+  links:
+    - url: http://localhost:30002
+      title: Backstage UI
+      icon: dashboard
+  annotations:
+    github.com/project-slug: kadutejas/DevOps
+spec:
+  type: website
+  lifecycle: production
+  owner: devops-team
+  system: idp-platform
