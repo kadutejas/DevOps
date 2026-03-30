@@ -98,25 +98,6 @@ spec:
                   rules:
                     - allow: [System, Component, Resource, Location]
 
-          # Inject PostgreSQL connection details as environment variables.
-          # The ${VAR} placeholders in appConfig above resolve to these at runtime.
-          extraEnvVars:
-            - name: POSTGRES_HOST
-              # WHY "backstage-postgresql": Bitnami chart names the service
-              # <release-name>-postgresql inside the same namespace.
-              value: "backstage-postgresql"
-            - name: POSTGRES_PORT
-              value: "5432"
-            - name: POSTGRES_USER
-              value: "backstage"
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  # Bitnami chart creates this secret automatically with the
-                  # password set in postgresql.auth.password below.
-                  name: backstage-postgresql
-                  key: password
-
           resources:
             requests:
               cpu: 100m
