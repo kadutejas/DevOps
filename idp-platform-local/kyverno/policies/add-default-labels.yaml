@@ -1,0 +1,62 @@
+# Policy: add-default-labels
+#
+# WHAT: Automatically adds standard labels to every Pod that doesn't already have them.
+#
+# WHY this matters in real life:
+#   - Labels are how you filter, group, and query resources (kubectl, Prometheus, Grafana).
+#   - Without consistent labels, cost attribution and ownership are impossible.
+#   - "Who owns this pod?" is unanswerable without a team/owner label.
+#   - Standard labels = FinOps, incident response, and compliance all become easier.
+#
+# LABELS ADDED:
+#   - environment     = "local"    → what env is this? (local/staging/prod)
+#   - managed-by      = "argocd"   → signals GitOps ownership
+#   - platform        = "idp"      → groups everything under the IDP umbrella
+#
+# MODE: Mutate — silently patches the resource before it's saved.
+# WHY Mutate instead of Validate: enforcement (Validate) would break pods
+# that don't have the label. Mutation is non-breaking — it just adds what's missing.
+#
+# NOTE: The patch only adds the label if it's ABSENT. If a pod already sets
+# environment: "production", this policy will NOT overwrite it.
+
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: add-default-labels
+  annotations:
+    policies.kyverno.io/title: Add Default Labels
+    policies.kyverno.io/category: Automation
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/description: >
+      Automatically adds environment, managed-by, and platform labels to all Pods
+      that do not already define them.
+
+spec:
+  # WHY no validationFailureAction: this is a mutate-only policy.
+  # Mutate policies don't validate — they just patch.
+  background: false   # Mutation only applies to NEW resources, not existing ones
+
+  rules:
+    - name: add-environment-label
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+      mutate:
+        # patchStrategicMerge: deep-merges the patch into the resource spec.
+        # Labels under this block are only added — existing labels are preserved.
+        patchStrategicMerge:
+          metadata:
+            labels:
+              # +(key): only add if missing. Without the +, it would overwrite.
+              +(environment): "local"
+              +(managed-by): "argocd"
+              +(platform): "idp"

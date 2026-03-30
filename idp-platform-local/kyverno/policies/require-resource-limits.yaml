@@ -1,0 +1,69 @@
+# Policy: require-resource-limits
+#
+# WHAT: Every container must declare cpu and memory requests AND limits.
+#
+# WHY this matters in real life:
+#   - Without requests: the scheduler places pods randomly, causing node overload.
+#   - Without limits: one runaway pod can OOM the entire node (noisy neighbour problem).
+#   - Limits are REQUIRED for Kubernetes QoS class "Guaranteed" (highest priority).
+#   - In production, a missing limit = SRE incident waiting to happen.
+#
+# WHY both requests AND limits:
+#   - requests = what the scheduler reserves (minimum guarantee)
+#   - limits   = the hard cap (maximum allowed)
+#   - Setting only limits without requests makes the pod Burstable, not Guaranteed.
+#
+# MODE: Audit — logs violations without blocking.
+# Real-world usage: run in Audit for 1-2 weeks, review the report,
+# patch violations, then flip to Enforce.
+
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/title: Require Resource Limits
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >
+      All containers must specify cpu and memory requests and limits.
+      This prevents resource starvation and ensures predictable scheduling.
+
+spec:
+  validationFailureAction: Audit
+  background: true
+
+  rules:
+    - name: require-limits-and-requests
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+                - argocd
+      validate:
+        message: "Container '{{ element.name }}' must specify resources.requests.cpu, resources.requests.memory, resources.limits.cpu, and resources.limits.memory."
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                # Deny if ANY of these four fields is missing or empty
+                any:
+                  - key: "{{ element.resources.requests.cpu | length(@) }}"
+                    operator: Equals
+                    value: 0
+                  - key: "{{ element.resources.requests.memory | length(@) }}"
+                    operator: Equals
+                    value: 0
+                  - key: "{{ element.resources.limits.cpu | length(@) }}"
+                    operator: Equals
+                    value: 0
+                  - key: "{{ element.resources.limits.memory | length(@) }}"
+                    operator: Equals
+                    value: 0

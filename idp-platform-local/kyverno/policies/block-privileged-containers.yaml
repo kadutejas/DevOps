@@ -1,0 +1,77 @@
+# Policy: block-privileged-containers
+#
+# WHAT: Hard-blocks any container with securityContext.privileged: true.
+#
+# WHY this is ENFORCE (not Audit):
+#   - A privileged container has FULL access to the host kernel.
+#   - It can read/write any file on the host, load kernel modules, and escape trivially.
+#   - There is almost NO legitimate reason for application workloads to be privileged.
+#   - This is one of the few policies safe to enforce immediately — no false positives
+#     in well-run clusters because nothing should ever need this.
+#
+# CONTRAST WITH block-root-containers (Audit):
+#   - Root inside a container is risky but containable.
+#   - Privileged mode removes ALL container isolation — it's a full host escape.
+#   - Different severity → different enforcement mode.
+#
+# EXCEPTIONS (handled by exclude):
+#   - kube-system: some CNI plugins (Calico, Cilium) and DaemonSets need it
+#   - kyverno: the engine itself needs host-level access for webhook operations
+#
+# HOW TO TEST THIS POLICY (expect it to block):
+#   kubectl run test-privileged \
+#     --image=nginx:1.25 \
+#     --overrides='{"spec":{"containers":[{"name":"test","image":"nginx:1.25","securityContext":{"privileged":true}}]}}' \
+#     --restart=Never
+#   → Should be REJECTED with: "Privileged containers are not allowed."
+
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: block-privileged-containers
+  annotations:
+    policies.kyverno.io/title: Block Privileged Containers
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: critical
+    policies.kyverno.io/description: >
+      Hard-blocks any container with securityContext.privileged: true.
+      Privileged containers have full host kernel access and bypass all container isolation.
+
+spec:
+  # WHY Enforce: privileged containers are a critical security risk.
+  # Unlike root containers (which are common in legacy images), privileged mode
+  # has no legitimate use case for application workloads. Block immediately.
+  validationFailureAction: Enforce
+  background: true
+
+  rules:
+    - name: block-privileged-flag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+      validate:
+        message: "Privileged containers are not allowed. Remove securityContext.privileged: true from container '{{ element.name }}'."
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.securityContext.privileged || false }}"
+                    operator: Equals
+                    value: true
+          # Also check initContainers — often overlooked
+          - list: "request.object.spec.initContainers"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.securityContext.privileged || false }}"
+                    operator: Equals
+                    value: true

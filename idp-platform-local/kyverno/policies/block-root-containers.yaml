@@ -1,0 +1,67 @@
+# Policy: block-root-containers
+#
+# WHAT: Rejects pods that run as root (UID 0).
+#
+# WHY this matters in real life:
+#   - A container running as root that escapes its sandbox = host root access.
+#   - Container escapes do happen (runc CVEs, kernel vulnerabilities).
+#   - Running as non-root limits blast radius: an attacker gets a low-privilege user.
+#   - This is one of the NSA/CISA Kubernetes Hardening Guide requirements.
+#
+# HOW root is set in Kubernetes:
+#   Option A: securityContext.runAsUser: 0   (explicitly root)
+#   Option B: securityContext.runAsNonRoot: false (default — allows root)
+#   Option C: no securityContext at all (image ENTRYPOINT decides, often root)
+#
+# This policy requires EITHER:
+#   - runAsNonRoot: true   OR
+#   - runAsUser set to a non-zero value
+#
+# MODE: Audit — many public images (nginx, redis) run as root by default.
+# Switching to Enforce requires rebuilding or wrapping those images.
+
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: block-root-containers
+  annotations:
+    policies.kyverno.io/title: Block Root Containers
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >
+      Containers must not run as root (UID 0).
+      Either set securityContext.runAsNonRoot: true or securityContext.runAsUser to a non-zero value.
+
+spec:
+  validationFailureAction: Audit
+  background: true
+
+  rules:
+    - name: block-running-as-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+                - argocd
+                - monitoring   # kube-prometheus-stack has containers that run as root
+      validate:
+        message: "Container '{{ element.name }}' must not run as root. Set securityContext.runAsNonRoot: true or securityContext.runAsUser to a non-zero UID."
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                all:
+                  # Deny only when BOTH conditions are true (no non-root guarantee)
+                  - key: "{{ element.securityContext.runAsNonRoot || false }}"
+                    operator: Equals
+                    value: false
+                  - key: "{{ element.securityContext.runAsUser || 0 }}"
+                    operator: Equals
+                    value: 0

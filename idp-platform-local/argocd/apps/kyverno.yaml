@@ -1,0 +1,96 @@
+# Kyverno Engine — Phase 3
+#
+# WHY Kyverno: it is an admission webhook controller.
+# Every time kubectl (or ArgoCD) creates/updates a resource, Kubernetes calls
+# Kyverno BEFORE saving it. Kyverno can:
+#   - Validate  → allow or deny the resource
+#   - Mutate    → auto-modify the resource (add labels, set defaults)
+#   - Generate  → auto-create companion resources
+#
+# WHY sync-wave 2: Kyverno installs CRDs (ClusterPolicy, PolicyReport, etc.)
+# and the webhook. The policy app (wave 3) references those CRDs — it must
+# wait until the engine is fully up or ArgoCD will fail to render the manifests.
+#
+# Waves: app-of-apps(-1) → monitoring/backstage(0) → kyverno-engine(2) → kyverno-policies(3)
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+
+spec:
+  project: default
+
+  source:
+    repoURL: https://kyverno.github.io/kyverno
+    chart: kyverno
+    targetRevision: "*"
+
+    helm:
+      releaseName: kyverno
+      values: |
+
+        # ── Replica count ──────────────────────────────────────────────────
+        # WHY 1: HA mode runs 3 replicas (one per role). Overkill for local dev.
+        # Single replica saves ~400 MB RAM on our WSL2 cluster.
+        admissionController:
+          replicas: 1
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+
+        backgroundController:
+          replicas: 1
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+        cleanupController:
+          replicas: 1
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+        reportsController:
+          replicas: 1
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+        # ── CRDs ──────────────────────────────────────────────────────────
+        crds:
+          install: true
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyverno
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      # WHY Replace: Kyverno CRDs are large and can hit annotation size limits
+      # even with SSA on some versions. Replace bypasses this entirely.
+      - Replace=true

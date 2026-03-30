@@ -1,0 +1,41 @@
+# Kyverno Policies — Phase 3
+#
+# WHY a separate app from the engine: policies are ClusterPolicy CRDs.
+# That CRD is installed by the kyverno engine app (wave 2).
+# If both apps were at the same sync-wave, ArgoCD might try to apply
+# ClusterPolicy manifests before the CRD exists — causing a render error.
+#
+# Separation of concerns also matters: you can update policies without
+# touching the engine, and vice versa. Git history stays clean.
+#
+# WHY path points to kyverno/policies: ArgoCD reads every .yaml file in
+# that directory and applies them all. Adding a new policy = commit a file.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno-policies
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/kadutejas/DevOps
+    targetRevision: HEAD
+    path: idp-platform-local/kyverno/policies
+
+  destination:
+    server: https://kubernetes.default.svc
+    # ClusterPolicies are cluster-scoped (not namespaced) but ArgoCD still
+    # needs a destination namespace — argocd is used by convention.
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

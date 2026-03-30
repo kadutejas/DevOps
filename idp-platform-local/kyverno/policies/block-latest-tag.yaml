@@ -1,0 +1,72 @@
+# Policy: block-latest-tag
+#
+# WHAT: Rejects pods whose containers use the `:latest` image tag (or no tag at all).
+#
+# WHY this matters in real life:
+#   - `:latest` is mutable — the same tag can point to different images over time.
+#   - If a node restarts and re-pulls, it may get a different version silently.
+#   - Pin tags (e.g. nginx:1.25.3) for reproducible, auditable deployments.
+#
+# MODE: Audit — violations are logged in PolicyReport but the pod still starts.
+# WHY Audit first: our own platform components (ArgoCD, Grafana) may use latest.
+# Switch to Enforce only after confirming zero violations.
+#
+# HOW TO CHECK VIOLATIONS:
+#   kubectl get policyreport -A
+#   kubectl get policyreport -A -o json | jq '.items[].results[] | select(.result=="fail")'
+
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: block-latest-tag
+  annotations:
+    # Human-readable description shown in kubectl describe and Backstage (future)
+    policies.kyverno.io/title: Block Latest Image Tag
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >
+      Requires all container images to use a pinned tag.
+      Images without a tag (defaults to :latest) or explicitly using :latest are rejected.
+
+spec:
+  # WHY Audit: safe starting point — observe violations before enforcing.
+  # Change to Enforce when you're confident no legitimate pods use :latest.
+  validationFailureAction: Audit
+
+  # WHY background: true: Kyverno scans existing resources against this policy.
+  # Without this, only NEW resources would be checked.
+  background: true
+
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      # WHY exclude: system namespaces run infrastructure components we don't control.
+      # Blocking them would break the cluster itself.
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+                - argocd
+      validate:
+        message: "Image tag must be specified and must not be 'latest'. Use a pinned version e.g. nginx:1.25.3"
+        # JMESPath pattern: checks every container (init and regular)
+        # The pattern says: the image string must NOT end in :latest AND must contain a colon (has a tag)
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                any:
+                  # Deny if no tag at all (no colon in image name)
+                  - key: "{{ element.image }}"
+                    operator: NotIn
+                    value: ["*:*"]
+                  # Deny if tag is explicitly :latest
+                  - key: "{{ element.image }}"
+                    operator: In
+                    value: ["*:latest"]
