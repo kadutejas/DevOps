@@ -33,6 +33,10 @@ spec:
       releaseName: kyverno
       values: |
 
+        features:
+          validatingAmissionPolicyReorts:
+            enabled: false   # saves ~200 MB RAM by not running the report controller
+
         # ── Replica count ──────────────────────────────────────────────────
         # WHY 1: HA mode runs 3 replicas (one per role). Overkill for local dev.
         # Single replica saves ~400 MB RAM on our WSL2 cluster.
