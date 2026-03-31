@@ -66,6 +66,12 @@ spec:
         # ── Prometheus ────────────────────────────────────────────────────
         prometheus:
           prometheusSpec:
+            # WHY externalLabels.cluster: the built-in Grafana dashboards filter
+            # every query with {cluster=~"$cluster"}. Without this label all
+            # cAdvisor/kubelet metrics are invisible in those dashboards.
+            externalLabels:
+              cluster: idp-local
+
             # 30s scrape interval — fine for local dev; reduces CPU churn vs 15s default
             scrapeInterval: "30s"
             evaluationInterval: "30s"
