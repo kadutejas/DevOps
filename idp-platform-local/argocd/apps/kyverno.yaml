@@ -39,16 +39,16 @@ spec:
     # Override cleanup job image — bitnami/kubectl:1.28.5 no longer exists
     # Using a newer available tag instead
     cleanupJobs:
-      admissionReports:
-        image:
-          registry: docker.io
-          repository: bitnami/kubectl
-          tag: "1.29.10"
-      clusterAdmissionReports:
-        image:
-          registry: docker.io
-          repository: bitnami/kubectl
-          tag: "1.29.10"
+          admissionReports:
+            image:
+              registry: docker.io
+              repository: bitnami/kubectl
+              tag: "latest"
+          clusterAdmissionReports:
+            image:
+              registry: docker.io
+              repository: bitnami/kubectl
+              tag: "latest"
 
     admissionController:
       replicas: 1
