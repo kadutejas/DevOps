@@ -44,11 +44,11 @@ spec:
           replicas: 1
           resources:
             requests:
-              cpu: 50m
-              memory: 200MB
+              cpu: 100m
+              memory: 256Mi
             limits:
               cpu: 500m
-              memory: 384Mi
+              memory: 512Mi
 
         backgroundController:
           replicas: 1
