@@ -74,8 +74,12 @@ That's it. The script is idempotent — safe to re-run if something fails.
 |---------|-----|-------------|
 | ArgoCD UI | http://localhost:30000 | `admin` / printed by bootstrap.sh |
 | Grafana | http://localhost:30001 | `admin` / `idp-grafana-admin` |
+| Backstage | http://localhost:30002 | Click "Enter as Guest" |
 
-Grafana becomes available ~2 minutes after the monitoring app finishes syncing.
+**Service availability:**
+- ArgoCD: Available immediately after bootstrap
+- Grafana: Available ~2 minutes after monitoring sync completes
+- Backstage: Available ~3 minutes after backstage app sync completes
 
 ---
 
@@ -90,7 +94,30 @@ idp-platform-local/
 │   ├── values-kind.yaml          # ArgoCD Helm values (NodePort, lean resources)
 │   └── apps/
 │       ├── app-of-apps.yaml      # ArgoCD self-managing bootstrap app
-│       └── monitoring.yaml       # Prometheus + Grafana via kube-prometheus-stack
+│       ├── monitoring.yaml       # Prometheus + Grafana via kube-prometheus-stack
+│       ├── backstage.yaml        # Developer portal deployment
+│       └── kyverno.yaml          # Policy-as-Code engine
+│
+├── backstage/
+│   └── catalog/
+│       └── idp-platform.yaml    # Service catalog definitions
+│
+├── kyverno/
+│   ├── policies/                 # ClusterPolicy manifests
+│   │   ├── block-latest-tag.yaml
+│   │   ├── require-resource-limits.yaml
+│   │   ├── block-root-containers.yaml
+│   │   ├── add-default-labels.yaml
+│   │   └── block-privileged-containers.yaml
+│   └── test-policies.sh          # Policy validation script
+│
+├── grafana/
+│   └── dashboards/
+│       └── cluster-resources.json  # Custom cluster monitoring dashboard
+│
+├── docs/
+│   ├── COMPONENT-BREAKDOWN.md   # Detailed explanation of each component
+│   └── ARCHITECTURE.md          # Visual architecture diagrams and flows
 │
 ├── bootstrap.sh                  # One-shot setup (idempotent)
 └── README.md
@@ -114,10 +141,40 @@ idp-platform-local/
 | Phase | Status | Description |
 |-------|--------|-------------|
 | **1** | ✅ Done | kind cluster · ArgoCD · Prometheus · Grafana |
-| **2** | Planned | Backstage Developer Portal |
-| **3** | Planned | Kyverno Policy-as-Code |
-| **4** | Planned | Custom Grafana dashboards · Architecture diagram |
+| **2** | ✅ Done | Backstage Developer Portal |
+| **3** | 🚧 Partial | Kyverno Policy-as-Code (policies ready, engine deployment blocked) |
+| **4** | ✅ Done | Custom Grafana dashboards · Architecture documentation |
 | **5** | Planned | Resume polish · Demo recording |
+
+---
+
+## Phase 4: Custom Dashboards & Documentation
+
+### Custom Grafana Dashboards
+
+**Cluster Resource Usage Dashboard**
+- Import [grafana/dashboards/cluster-resources.json](grafana/dashboards/cluster-resources.json) into Grafana
+- Shows CPU/Memory usage by namespace with summary statistics
+- Real-time metrics from all nodes and pods
+
+To import:
+1. Open Grafana at http://localhost:30001
+2. Navigate to **Dashboards** → **Import**
+3. Upload the JSON file or copy/paste the content
+4. Set Prometheus as the data source (already configured)
+
+### Architecture Documentation
+
+**Component Breakdown** — [docs/COMPONENT-BREAKDOWN.md](docs/COMPONENT-BREAKDOWN.md)
+- Detailed explanation of every platform component
+- Why each tool was chosen and how it fits the bigger picture
+- Integration patterns and production considerations
+
+**Architecture Diagrams** — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- Visual representation of component interactions
+- Data flow patterns (GitOps, observability, policy enforcement)
+- Network architecture and security considerations
+- Scaling and disaster recovery strategies
 
 ---
 
