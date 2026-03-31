@@ -34,7 +34,7 @@ spec:
       values: |
 
         features:
-          validatingAmissionPolicyReorts:
+          validatingAdmissionPolicyReports:
             enabled: false   # saves ~200 MB RAM by not running the report controller
 
         # ── Replica count ──────────────────────────────────────────────────
@@ -45,7 +45,7 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 64Mi
+              memory: 200MB
             limits:
               cpu: 500m
               memory: 384Mi
