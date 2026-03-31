@@ -124,6 +124,17 @@ spec:
               cpu: 100m
               memory: 128Mi
 
+        # ── Admission webhook ─────────────────────────────────────────────
+        # WHY false: the admission webhook (used for CRD validation) causes ArgoCD
+        # to deadlock — it waits indefinitely for the admission-create hook Job to
+        # finish, even after it completes. Disabled for local dev since we don't
+        # need in-cluster CRD validation; ArgoCD already validates manifests at sync time.
+        prometheusOperator:
+          admissionWebhooks:
+            enabled: false
+            patch:
+              enabled: false
+
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring
