@@ -36,7 +36,56 @@ spec:
         features:
           validatingAdmissionPolicyReports:
             enabled: false   # saves ~200 MB RAM by not running the report controller
+    # Override cleanup job image — bitnami/kubectl:1.28.5 no longer exists
+    # Using a newer available tag instead
+    cleanupJobs:
+      admissionReports:
+        image:
+          registry: docker.io
+          repository: bitnami/kubectl
+          tag: "1.29.10"
+      clusterAdmissionReports:
+        image:
+          registry: docker.io
+          repository: bitnami/kubectl
+          tag: "1.29.10"
 
+    admissionController:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 384Mi
+
+    backgroundController:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
+
+    cleanupController:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
+
+    reportsController:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
         # ── Replica count ──────────────────────────────────────────────────
         # WHY 1: HA mode runs 3 replicas (one per role). Overkill for local dev.
         # Single replica saves ~400 MB RAM on our WSL2 cluster.
