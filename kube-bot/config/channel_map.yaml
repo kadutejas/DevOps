@@ -1,0 +1,47 @@
+# ================================================================
+# kube-bot Channel Map
+# ================================================================
+#
+# HOW IT WORKS
+# ─────────────
+# By default, kube-bot posts alerts to a Slack channel whose name
+# matches the Kubernetes namespace name.
+#
+#   namespace "production"  →  Slack channel "#production"
+#   namespace "staging"     →  Slack channel "#staging"
+#
+# Use the `overrides` section below to map specific namespaces to
+# different channel names.
+#
+# PLACEHOLDERS you can use in `default_pattern`:
+#   {namespace}  → replaced with the actual namespace name
+#
+# HOW TO APPLY CHANGES (no rebuild needed):
+#   1. Edit the overrides section below
+#   2. kubectl apply -f k8s/configmap.yaml
+#   3. kubectl rollout restart deployment/kube-bot -n kube-bot
+#
+# ================================================================
+
+channel_map:
+
+  # Default: all alerts go to #kube-bot
+  # To route a specific namespace elsewhere, add it under overrides below.
+  default_pattern: "kube-bot"
+
+  # ── Overrides (namespace: slack-channel-name) ──────────────────
+  # List namespaces here ONLY when the Slack channel name differs
+  # from the namespace name.  Leave the section empty if all your
+  # channels exactly match namespace names.
+  overrides:
+    # Examples – uncomment and edit as needed:
+    #
+    # monitoring:   "platform-monitoring"   # → #platform-monitoring
+    # kube-system:  "infra-alerts"          # → #infra-alerts
+    # argocd:       "gitops-alerts"         # → #gitops-alerts
+    # backstage:    "platform-team"         # → #platform-team
+    #
+    # My microservice overrides:
+    # payments-service:  "payments-oncall"
+    # auth-service:      "auth-team-alerts"
+    # api-gateway:       "gateway-alerts"

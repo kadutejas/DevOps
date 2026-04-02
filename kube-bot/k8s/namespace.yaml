@@ -1,0 +1,2 @@
+# kube-bot is deployed into the existing 'backstage' namespace.
+# No separate namespace needed.

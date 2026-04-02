@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-bot
+  namespace: backstage
+  labels:
+    app: kube-bot
+spec:
+  replicas: 1           # Only 1 replica – multiple replicas would send duplicate alerts
+  selector:
+    matchLabels:
+      app: kube-bot
+  template:
+    metadata:
+      labels:
+        app: kube-bot
+    spec:
+      serviceAccountName: kube-bot   # Defined in k8s/rbac.yaml
+
+      # ── Security: run as non-root ────────────────────────────
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+
+      containers:
+        - name: kube-bot
+          # ── Change this to your own registry/image:tag ───────
+          image: tejaskadu/kube-bot:latest
+          imagePullPolicy: Always
+
+          # ── Environment variables ─────────────────────────────
+          env:
+            # Slack token injected from Secret (never hard-coded)
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: kube-bot-secrets
+                  key: SLACK_BOT_TOKEN
+
+            # Slack channel where alerts are posted
+            - name: SLACK_CHANNEL
+              value: "#kube-bot"
+
+            # Watch ALL namespaces that matter; ignore everything else.
+            # Watching: argocd, backstage
+            - name: WATCH_NAMESPACE
+              value: ""
+
+            # Skip system namespaces + anything not part of the IDP platform
+            - name: IGNORED_NAMESPACES
+              value: "kube-system,kube-public,kube-node-lease,monitoring,kyverno,local-path-storage,default"
+
+            # Re-alert for the same pod after this many seconds (default 30 min)
+            - name: ALERT_COOLDOWN_SECONDS
+              value: "1800"
+
+            # Path where rules.yaml is mounted from the ConfigMap
+            - name: RULES_CONFIG_PATH
+              value: "/config/rules.yaml"
+
+            # Path where channel_map.yaml is mounted from the ConfigMap
+            # Defines namespace → Slack channel routing
+            # Default behaviour: channel name = namespace name
+            - name: CHANNEL_MAP_PATH
+              value: "/config/channel_map.yaml"
+
+            # Log verbosity: DEBUG | INFO | WARNING | ERROR
+            - name: LOG_LEVEL
+              value: "INFO"
+
+          # ── Mount the ConfigMap as /config/ ───────────────────
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+
+          # ── Resource limits (tune to your cluster) ────────────
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+
+          # ── Container-level security ──────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+      volumes:
+        - name: config
+          configMap:
+            name: kube-bot-config
+
+      restartPolicy: Always

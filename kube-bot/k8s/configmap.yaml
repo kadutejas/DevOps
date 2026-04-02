@@ -1,0 +1,127 @@
+# ================================================================
+# ConfigMap – mounts config/rules.yaml into the bot pod.
+# ================================================================
+# To update your fix suggestions WITHOUT rebuilding the image:
+#   1. Edit the rules.yaml content below
+#   2. kubectl apply -f k8s/configmap.yaml
+#   3. kubectl rollout restart deployment/kube-bot -n kube-bot
+# ================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-bot-config
+  namespace: backstage
+  labels:
+    app: kube-bot
+data:
+  rules.yaml: |
+    # ================================================================
+    # kube-bot Fix Suggestions Rules
+    # ================================================================
+    # Use {pod_name} and {namespace} as placeholders in suggestions.
+    # Severity levels: critical | warning | info
+    #
+    # To add a new rule:
+    #   MyIssueType:
+    #     severity: critical
+    #     suggestions:
+    #       - "Your suggestion here"
+    # ================================================================
+
+    rules:
+
+      CrashLoopBackOff:
+        severity: critical
+        suggestions:
+          - "View logs from the previous (crashed) container: kubectl logs {pod_name} -n {namespace} --previous"
+          - "Check the container startup command / entrypoint in the deployment spec"
+          - "Verify all required environment variables are set"
+          - "Confirm ConfigMaps and Secrets referenced by the pod exist"
+          - "Inspect events: kubectl describe pod {pod_name} -n {namespace}"
+
+      ImagePullBackOff:
+        severity: critical
+        suggestions:
+          - "Check the image name and tag are correct in the deployment spec"
+          - "If using a private registry, confirm imagePullSecrets is set"
+          - "Verify the registry is reachable from the cluster nodes"
+          - "Inspect: kubectl get pod {pod_name} -n {namespace} -o yaml | grep -i image"
+
+      ErrImagePull:
+        severity: critical
+        suggestions:
+          - "Check the image name and tag are correct in the deployment spec"
+          - "If using a private registry, confirm imagePullSecrets is set"
+          - "Verify the registry is reachable from the cluster nodes"
+
+      InvalidImageName:
+        severity: critical
+        suggestions:
+          - "Fix the image name format – expected format: registry/repo:tag"
+          - "Check for extra spaces or typos in the deployment image field"
+
+      OOMKilled:
+        severity: critical
+        suggestions:
+          - "Increase the memory limit: edit resources.limits.memory in the container spec"
+          - "Check for a memory leak in the application"
+          - "View real-time resource usage: kubectl top pod {pod_name} -n {namespace}"
+
+      CreateContainerConfigError:
+        severity: critical
+        suggestions:
+          - "Verify all referenced ConfigMaps exist: kubectl get configmaps -n {namespace}"
+          - "Verify all referenced Secrets exist:    kubectl get secrets -n {namespace}"
+          - "Check for typos in configmap / secret names in the deployment spec"
+          - "Describe pod for detailed error: kubectl describe pod {pod_name} -n {namespace}"
+
+      CreateContainerError:
+        severity: critical
+        suggestions:
+          - "Describe pod for the exact error: kubectl describe pod {pod_name} -n {namespace}"
+          - "Check if the node has enough resources: kubectl describe nodes"
+
+      Error:
+        severity: critical
+        suggestions:
+          - "Read previous container logs: kubectl logs {pod_name} -n {namespace} --previous"
+          - "Describe pod for events: kubectl describe pod {pod_name} -n {namespace}"
+
+      Evicted:
+        severity: warning
+        suggestions:
+          - "Check node conditions for pressure: kubectl describe nodes | grep -A 5 Conditions"
+          - "Review resource requests/limits"
+          - "Check if disk pressure is causing evictions"
+
+      Failed:
+        severity: critical
+        suggestions:
+          - "Read the logs: kubectl logs {pod_name} -n {namespace}"
+          - "Describe the pod: kubectl describe pod {pod_name} -n {namespace}"
+
+      Unknown:
+        severity: warning
+        suggestions:
+          - "The node hosting this pod may be unreachable – check: kubectl get nodes"
+          - "Inspect the kubelet service on the affected node"
+
+  channel_map.yaml: |
+    # ================================================================
+    # kube-bot Channel Map
+    # ================================================================
+    # Default: Slack channel = namespace name (e.g. "production" → #production)
+    # Add entries to `overrides` when channel name differs from namespace name.
+    #
+    # HOW TO EDIT:
+    #   1. Add/change entries below
+    #   2. kubectl apply -f k8s/configmap.yaml
+    #   3. kubectl rollout restart deployment/kube-bot -n kube-bot
+    # ================================================================
+
+    channel_map:
+      default_pattern: "kube-bot"
+      overrides:
+        # monitoring:  "platform-monitoring"
+        # argocd:      "gitops-alerts"
+        # backstage:   "platform-team"

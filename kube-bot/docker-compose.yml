@@ -1,0 +1,24 @@
+# ================================================================
+# docker-compose.yml – local development only
+# ================================================================
+# Runs kube-bot on your machine, using your local kubeconfig to
+# connect to a cluster (minikube, kind, or a remote cluster).
+#
+# Usage:
+#   cp .env.example .env       # fill in SLACK_BOT_TOKEN etc.
+#   docker compose up --build
+# ================================================================
+
+services:
+  kube-bot:
+    build: .
+    env_file: .env
+    volumes:
+      # Mount your local kubeconfig so the bot can reach your cluster
+      - "${HOME}/.kube:/home/kube-bot/.kube:ro"
+      # Mount rules.yaml so you can edit suggestions without rebuild
+      - "./config:/config:ro"
+    environment:
+      # Tell the Kubernetes client where kubeconfig is
+      - KUBECONFIG=/home/kube-bot/.kube/config
+    restart: unless-stopped

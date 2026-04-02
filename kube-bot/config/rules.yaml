@@ -1,0 +1,134 @@
+# ================================================================
+# kube-bot Fix Suggestions Rules
+# ================================================================
+#
+# HOW TO ADD YOUR OWN RULES
+# ─────────────────────────
+# 1. Identify the Kubernetes reason string (see list below or
+#    run: kubectl describe pod <name> -n <ns> and look at "Reason")
+# 2. Add a new entry under `rules:` using the exact reason string
+#    as the key.
+# 3. Set severity to: critical | warning | info
+# 4. Write your custom suggestions. You may use these placeholders:
+#      {pod_name}   → replaced with the actual pod name at runtime
+#      {namespace}  → replaced with the actual namespace at runtime
+#
+# Kubernetes re-loads this file via the ConfigMap mount – no rebuild needed.
+#
+# EXAMPLE – adding your own rule:
+#
+#   MyServiceCrash:
+#     severity: critical
+#     suggestions:
+#       - "Check the database connection string in Secret my-service-db"
+#       - "Verify the upstream API is reachable"
+#       - "kubectl logs {pod_name} -n {namespace} | grep 'ERROR'"
+#
+# ================================================================
+
+rules:
+
+  # ── Container keeps crashing and restarting ──────────────────
+  CrashLoopBackOff:
+    severity: critical
+    suggestions:
+      - "View logs from the previous (crashed) container: kubectl logs {pod_name} -n {namespace} --previous"
+      - "Check the container startup command / entrypoint in the deployment spec"
+      - "Verify all required environment variables are set"
+      - "Confirm ConfigMaps and Secrets referenced by the pod exist"
+      - "Inspect events: kubectl describe pod {pod_name} -n {namespace}"
+
+  # ── Cannot pull the container image ─────────────────────────
+  ImagePullBackOff:
+    severity: critical
+    suggestions:
+      - "Check the image name and tag are correct in the deployment spec"
+      - "If using a private registry, confirm imagePullSecrets is set"
+      - "Verify the registry is reachable from the cluster nodes"
+      - "Inspect: kubectl get pod {pod_name} -n {namespace} -o yaml | grep -i image"
+
+  ErrImagePull:
+    severity: critical
+    suggestions:
+      - "Check the image name and tag are correct in the deployment spec"
+      - "If using a private registry, confirm imagePullSecrets is set"
+      - "Verify the registry is reachable from the cluster nodes"
+
+  InvalidImageName:
+    severity: critical
+    suggestions:
+      - "Fix the image name format – expected format: registry/repo:tag"
+      - "Check for extra spaces or typos in the deployment image field"
+
+  # ── Container killed due to out of memory ───────────────────
+  OOMKilled:
+    severity: critical
+    suggestions:
+      - "Increase the memory limit: edit resources.limits.memory in the container spec"
+      - "Check for a memory leak in the application"
+      - "View real-time resource usage: kubectl top pod {pod_name} -n {namespace}"
+      - "Review the app's memory consumption under peak load"
+
+  # ── Container configuration error ───────────────────────────
+  CreateContainerConfigError:
+    severity: critical
+    suggestions:
+      - "Verify all referenced ConfigMaps exist: kubectl get configmaps -n {namespace}"
+      - "Verify all referenced Secrets exist:    kubectl get secrets -n {namespace}"
+      - "Check for typos in configmap / secret names in the deployment spec"
+      - "Describe pod for detailed error: kubectl describe pod {pod_name} -n {namespace}"
+
+  CreateContainerError:
+    severity: critical
+    suggestions:
+      - "Describe pod for the exact error: kubectl describe pod {pod_name} -n {namespace}"
+      - "Check if the node has enough resources: kubectl describe nodes"
+      - "Verify the required storage class / persistent volume is available"
+
+  # ── Container exited with a non-zero code ───────────────────
+  Error:
+    severity: critical
+    suggestions:
+      - "Check the exit code: kubectl get pod {pod_name} -n {namespace} -o jsonpath='{.status.containerStatuses[*].lastState.terminated.exitCode}'"
+      - "Read previous container logs: kubectl logs {pod_name} -n {namespace} --previous"
+      - "Describe pod for events: kubectl describe pod {pod_name} -n {namespace}"
+
+  # ── Pod evicted (node pressure) ──────────────────────────────
+  Evicted:
+    severity: warning
+    suggestions:
+      - "Check node conditions for pressure: kubectl describe nodes | grep -A 5 Conditions"
+      - "Review resource requests/limits to ensure the pod is scheduled on a healthy node"
+      - "Check if disk pressure is causing evictions (node disk usage)"
+      - "Consider setting PodDisruptionBudgets to control eviction behaviour"
+
+  # ── Pod phase: Failed ─────────────────────────────────────────
+  Failed:
+    severity: critical
+    suggestions:
+      - "Read the logs: kubectl logs {pod_name} -n {namespace}"
+      - "Describe the pod: kubectl describe pod {pod_name} -n {namespace}"
+      - "If this is a Job/CronJob, review the job's backoffLimit and restartPolicy"
+
+  # ── Pod phase: Unknown (node unreachable) ────────────────────
+  Unknown:
+    severity: warning
+    suggestions:
+      - "The node hosting this pod may be unreachable – check: kubectl get nodes"
+      - "SSH to the node and inspect the kubelet service"
+      - "If the node is permanently down, drain it: kubectl drain <node-name>"
+
+  # ================================================================
+  # ADD YOUR MICROSERVICE-SPECIFIC RULES BELOW
+  # ================================================================
+  #
+  # Example for an auth service:
+  #
+  # AuthServiceCrash:
+  #   severity: critical
+  #   suggestions:
+  #     - "Check if the database is reachable from {pod_name}"
+  #     - "Verify the JWT_SECRET env var is set in the auth-service Secret"
+  #     - "kubectl logs {pod_name} -n {namespace} | grep 'FATAL'"
+  #
+  # ================================================================

@@ -1,0 +1,24 @@
+# Python
+*.pyc
+*.pyo
+__pycache__/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Secrets – NEVER commit real values
+.env
+!.env.example
+k8s/secret.yaml
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+*.tar
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,30 @@
+# Files to exclude from the Docker build context.
+# Keeps the image small and prevents secrets from leaking into the image.
+
+.env
+.env.*
+!.env.example
+
+# Python cache
+*.pyc
+*.pyo
+__pycache__/
+*.egg-info/
+.pytest_cache/
+dist/
+build/
+
+# Git & IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Kubernetes manifests (not needed inside the container)
+k8s/
+
+# Config files (mounted at runtime via ConfigMap, not baked in)
+config/
+
+# Docs
+*.md

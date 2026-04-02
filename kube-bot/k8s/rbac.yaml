@@ -1,0 +1,61 @@
+# ================================================================
+# RBAC for kube-bot
+# ================================================================
+#
+# Two options are provided:
+#
+#   OPTION A (default) – ClusterRole
+#     The bot watches ALL namespaces (except those listed in
+#     IGNORED_NAMESPACES).  Use this for a microservice cluster
+#     where pods span multiple namespaces.
+#
+#   OPTION B – namespaced Role
+#     The bot watches ONE specific namespace only.
+#     Comment out Option A and uncomment Option B.
+#     Also set WATCH_NAMESPACE in deployment.yaml.
+#
+# ================================================================
+
+# ── ServiceAccount ────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-bot
+  namespace: backstage
+  labels:
+    app: kube-bot
+
+---
+# ════════════════════════════════════════════════════════════════
+# ClusterRole – watches pods/events across all namespaces.
+# System namespaces are excluded via IGNORED_NAMESPACES in
+# deployment.yaml (kube-system, kube-public, kube-node-lease, kube-bot).
+# Watched namespaces: argocd, backstage, default, kyverno,
+#                     local-path-storage, monitoring
+# ════════════════════════════════════════════════════════════════
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-bot
+  labels:
+    app: kube-bot
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "events"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-bot
+  labels:
+    app: kube-bot
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-bot
+subjects:
+  - kind: ServiceAccount
+    name: kube-bot
+    namespace: backstage
