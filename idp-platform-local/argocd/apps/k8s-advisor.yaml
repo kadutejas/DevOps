@@ -1,0 +1,36 @@
+# ================================================================
+# ArgoCD Application – k8s-advisor
+# ================================================================
+# Deploys the AI-powered k8s-advisor alongside the IDP platform.
+#
+# BEFORE APPLYING – create the secrets:
+#   kubectl create namespace k8s-advisor
+#   kubectl create secret generic k8s-advisor-secrets \
+#     --from-literal=SLACK_BOT_TOKEN=xoxb-your-token \
+#     -n k8s-advisor
+# ================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: k8s-advisor
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/kadutejas/DevOps
+    targetRevision: HEAD
+    path: idp-platform-local/k8s-advisor/k8s
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: k8s-advisor
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

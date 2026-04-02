@@ -1,0 +1,42 @@
+# ================================================================
+# ArgoCD Application – kube-bot
+# ================================================================
+# This manifest makes kube-bot part of the IDP GitOps platform.
+# ArgoCD will auto-deploy and keep kube-bot in sync with your Git repo.
+#
+# HOW TO USE:
+#   This file is included in the app-of-apps path and will be
+#   automatically picked up by ArgoCD after it syncs.
+#
+# BEFORE APPLYING – create the Slack token secret in the cluster:
+#   kubectl create namespace kube-bot
+#   kubectl create secret generic kube-bot-secrets \
+#     --from-literal=SLACK_BOT_TOKEN=xoxb-your-token \
+#     -n kube-bot
+# ================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-bot
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"   # Deploy after core platform is up
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/kadutejas/DevOps
+    targetRevision: HEAD
+    # Path to the kube-bot k8s manifests (relative to repo root)
+    path: kube-bot/k8s
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backstage
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false   # backstage namespace already exists

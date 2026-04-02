@@ -1,0 +1,172 @@
+---
+# ── Namespace ──────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k8s-advisor
+  labels:
+    app: k8s-advisor
+
+---
+# ── ServiceAccount ─────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8s-advisor
+  namespace: k8s-advisor
+  labels:
+    app: k8s-advisor
+
+---
+# ── ClusterRole: read-only access to pods/events/deployments ──────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k8s-advisor
+  labels:
+    app: k8s-advisor
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "events", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "daemonsets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8s-advisor
+  labels:
+    app: k8s-advisor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: k8s-advisor
+subjects:
+  - kind: ServiceAccount
+    name: k8s-advisor
+    namespace: k8s-advisor
+
+---
+# ── Secret: API keys – DO NOT commit with real values ─────────────────────
+# Create with:
+#   kubectl create secret generic k8s-advisor-secrets \
+#     --from-literal=SLACK_BOT_TOKEN=xoxb-... \
+#     --from-literal=ANTHROPIC_API_KEY=sk-... \   # only if using Claude
+#     --from-literal=OPENAI_API_KEY=sk-... \      # only if using OpenAI
+#     -n k8s-advisor
+apiVersion: v1
+kind: Secret
+metadata:
+  name: k8s-advisor-secrets
+  namespace: k8s-advisor
+  labels:
+    app: k8s-advisor
+type: Opaque
+stringData:
+  SLACK_BOT_TOKEN: "REPLACE_WITH_YOUR_SLACK_BOT_TOKEN"
+  ANTHROPIC_API_KEY: ""   # leave empty if using Ollama
+  OPENAI_API_KEY: ""      # leave empty if using Ollama
+
+---
+# ── Deployment ─────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-advisor
+  namespace: k8s-advisor
+  labels:
+    app: k8s-advisor
+spec:
+  replicas: 1         # Single replica – stateful dedup is in-memory
+  selector:
+    matchLabels:
+      app: k8s-advisor
+  template:
+    metadata:
+      labels:
+        app: k8s-advisor
+    spec:
+      serviceAccountName: k8s-advisor
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+
+      containers:
+        - name: k8s-advisor
+          # ── Change this to your own registry/image:tag ────────
+          image: tejaskadu/k8s-advisor:latest
+          imagePullPolicy: Always
+
+          env:
+            # ── Slack ────────────────────────────────────────────
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-advisor-secrets
+                  key: SLACK_BOT_TOKEN
+
+            # Channel to post to (defaults to namespace name if using kube-bot)
+            - name: SLACK_CHANNEL
+              value: "#kubernetes-alerts"
+
+            # ── LLM Provider ─────────────────────────────────────
+            # Options: ollama (default, in-cluster) | openai | claude
+            - name: LLM_PROVIDER
+              value: "ollama"
+
+            - name: OLLAMA_URL
+              value: "http://ollama.ollama:11434"
+
+            - name: OLLAMA_MODEL
+              value: "llama3"
+
+            # Only needed when LLM_PROVIDER=claude
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-advisor-secrets
+                  key: ANTHROPIC_API_KEY
+                  optional: true
+
+            # Only needed when LLM_PROVIDER=openai
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-advisor-secrets
+                  key: OPENAI_API_KEY
+                  optional: true
+
+            # ── Kubernetes ───────────────────────────────────────
+            # Target namespace to watch (leave empty to watch all)
+            - name: TARGET_NAMESPACE
+              value: ""
+
+            - name: POLL_INTERVAL_SECONDS
+              value: "30"
+
+            - name: ALERT_COOLDOWN_MINUTES
+              value: "30"
+
+            - name: LOG_LEVEL
+              value: "INFO"
+
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "300m"
+              memory: "512Mi"
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+      restartPolicy: Always
