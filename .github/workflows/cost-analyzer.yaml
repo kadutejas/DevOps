@@ -1,0 +1,92 @@
+# ================================================================
+# CI/CD Pipeline — cost-analyzer
+# ================================================================
+# Triggers ONLY when files inside idp-platform-local/cost-analyzer/ change.
+#
+# SECRETS REQUIRED:
+#   DOCKERHUB_TOKEN  → Docker Hub access token
+# ================================================================
+
+name: cost-analyzer CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "idp-platform-local/cost-analyzer/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "idp-platform-local/cost-analyzer/**"
+
+env:
+  IMAGE_NAME: tejaskadu/cost-analyzer
+
+jobs:
+  lint:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install flake8
+          pip install -r idp-platform-local/cost-analyzer/requirements.txt
+
+      - name: Run flake8
+        run: |
+          flake8 idp-platform-local/cost-analyzer/main.py \
+            --count \
+            --select=E9,F63,F7,F82 \
+            --show-source \
+            --statistics
+
+  build-push:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    needs: lint
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: tejaskadu
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract git SHA (short)
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: idp-platform-local/cost-analyzer
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          echo "### ✅ cost-analyzer image pushed" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** \`${{ env.IMAGE_NAME }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **SHA tag:** \`${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **ArgoCD** will auto-deploy within ~3 minutes" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,102 @@
+# ================================================================
+# CI/CD Pipeline — kube-bot
+# ================================================================
+# Triggers ONLY when files inside kube-bot/ change.
+# Flow:
+#   1. Lint Python code
+#   2. Build Docker image
+#   3. Push to Docker Hub (tejaskadu/kube-bot)
+#   4. ArgoCD detects new :latest tag → auto-deploys
+#
+# SECRETS REQUIRED (add in GitHub → Settings → Secrets → Actions):
+#   DOCKERHUB_TOKEN  → Docker Hub access token
+#   (username is hard-coded as tejaskadu below)
+# ================================================================
+
+name: kube-bot CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "kube-bot/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "kube-bot/**"
+
+env:
+  IMAGE_NAME: tejaskadu/kube-bot
+
+jobs:
+  lint:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install flake8
+          pip install -r kube-bot/requirements.txt
+
+      - name: Run flake8
+        run: |
+          # Stop on syntax errors or undefined names; warn on style
+          flake8 kube-bot/src/ \
+            --count \
+            --select=E9,F63,F7,F82 \
+            --show-source \
+            --statistics
+
+  build-push:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    needs: lint
+    # Only push on merge to main, not on PRs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: tejaskadu
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract git SHA (short)
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: kube-bot
+          push: true
+          # Tag with both :latest and :<git-sha> for traceability
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}
+          # Cache layers between runs for faster builds
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          echo "### ✅ kube-bot image pushed" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** \`${{ env.IMAGE_NAME }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **SHA tag:** \`${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **ArgoCD** will auto-deploy within ~3 minutes" >> $GITHUB_STEP_SUMMARY
