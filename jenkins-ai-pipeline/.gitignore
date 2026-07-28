@@ -1,0 +1,20 @@
+# Maven build output
+app/target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Secrets — never commit these
+.env
+*.pem
+*.key
+/tmp/

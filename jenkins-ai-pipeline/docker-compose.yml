@@ -1,0 +1,62 @@
+# =============================================================
+#  Local Jenkins AI pipeline stack
+#    - jenkins   : CI/CD controller (Docker CLI + Python + Trivy)
+#    - registry  : private Docker registry for built images
+# =============================================================
+#  Start:    docker compose up -d --build
+#  Jenkins:  http://localhost:8080
+#  Registry: localhost:5001
+#
+#  First-run admin password:
+#    docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+#
+#  AWS credentials must be set in a .env file before running:
+#    cp .env.example .env  &&  $EDITOR .env
+# =============================================================
+
+services:
+  jenkins:
+    build:
+      context: ./jenkins
+    image: jenkins-ai-pipeline:latest
+    container_name: jenkins
+    user: root                       # needed to use the mounted Docker socket
+    restart: unless-stopped
+    environment:
+      # Skip the first-run setup wizard so Jenkins starts fully configured.
+      # Allow local file:// Git checkouts (needed for the bare repo mount).
+      JAVA_OPTS: >-
+        -Djenkins.install.runSetupWizard=false
+        -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true
+      # AWS Bedrock credentials — loaded from the .env file at compose start
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION:-eu-west-1}
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/ai-pipeline-bare.git:/srv/git/ai-pipeline.git:ro   # local Git repo
+    networks:
+      - cicd
+
+  registry:
+    image: registry:2
+    container_name: registry
+    restart: unless-stopped
+    ports:
+      - "5001:5000"
+    volumes:
+      - registry_data:/var/lib/registry
+    networks:
+      - cicd
+
+volumes:
+  jenkins_home:
+  registry_data:
+
+networks:
+  cicd:
+    driver: bridge

@@ -1,0 +1,7 @@
+# Plugins required by the AI pipeline (pre-installed in jenkins/Dockerfile).
+workflow-aggregator    # Declarative + scripted Pipeline core
+git                    # Git SCM checkout
+docker-workflow        # Docker Pipeline steps
+junit                  # Publish JUnit test results
+credentials-binding    # credentials() / withCredentials() bindings
+pipeline-utility-steps # readFile / writeFile helpers

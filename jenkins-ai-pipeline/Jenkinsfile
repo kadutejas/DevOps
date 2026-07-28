@@ -1,0 +1,132 @@
+pipeline {
+    agent any
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        REGISTRY   = 'localhost:5001'
+        IMAGE_NAME = 'ai-pipeline-app'
+        IMAGE_TAG  = "${REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}"
+
+        // ── AI intelligence config ───────────────────────────────────────
+        // AWS Bedrock credentials are injected via docker-compose .env file.
+        // The scripts call the Jenkins REST API from inside this container.
+        JENKINS_SELF_URL  = 'http://localhost:8080'
+        JENKINS_API_USER  = 'admin'
+        // Create these as Jenkins "Secret text" credentials:
+        JENKINS_API_TOKEN = credentials('jenkins-api-token')   // Jenkins API token
+        SLACK_WEBHOOK     = credentials('slack-webhook-url')   // Slack incoming webhook
+    }
+
+    parameters {
+        // Trigger a deliberate failure to test the AI failure-analysis + Slack flow.
+        booleanParam(
+            name:         'FORCE_FAILURE',
+            defaultValue: false,
+            description:  'Fail the build on purpose to test AI failure analysis.'
+        )
+    }
+
+    stages {
+
+        // ── Pre-build: AI Risk Prediction ────────────────────────────────
+        // Asks Bedrock (Claude Haiku) to score the risk of the next build.
+        // Medium/High risk posts a Slack warning (never blocks the build).
+        stage('AI Risk Prediction') {
+            steps {
+                sh '''
+                    python scripts/predict_failure.py \
+                        --jenkins-url   "$JENKINS_SELF_URL" \
+                        --job-name      "$JOB_NAME" \
+                        --jenkins-user  "$JENKINS_API_USER" \
+                        --jenkins-token "$JENKINS_API_TOKEN" \
+                        --slack-webhook "$SLACK_WEBHOOK" || true
+                '''
+            }
+        }
+
+        stage('Force Failure (test only)') {
+            when { expression { return params.FORCE_FAILURE } }
+            steps {
+                error('FORCE_FAILURE is true — intentional build failure for AI analysis testing.')
+            }
+        }
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                dir('app') {
+                    sh 'mvn -B clean compile'
+                }
+            }
+        }
+
+        stage('Unit Test') {
+            steps {
+                dir('app') {
+                    sh 'mvn -B test'
+                }
+            }
+            post {
+                always {
+                    junit 'app/target/surefire-reports/*.xml'
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                dir('app') {
+                    sh "docker build -t ${IMAGE_TAG} -t ${REGISTRY}/${IMAGE_NAME}:latest ."
+                }
+            }
+        }
+
+        stage('Trivy Scan') {
+            steps {
+                sh """
+                    trivy image \
+                        --exit-code 0 \
+                        --severity HIGH,CRITICAL \
+                        --no-progress \
+                        ${IMAGE_TAG}
+                """
+            }
+        }
+
+        stage('Push to Registry') {
+            steps {
+                sh "docker push ${IMAGE_TAG}"
+                sh "docker push ${REGISTRY}/${IMAGE_NAME}:latest"
+            }
+        }
+    }
+
+    post {
+        // ── AI Failure Analysis ──────────────────────────────────────────
+        // On any failure, send the console log tail to Bedrock (Claude Haiku)
+        // for root-cause analysis and post the result to Slack.
+        failure {
+            sh '''
+                python scripts/analyse_failure.py \
+                    --jenkins-url   "$JENKINS_SELF_URL" \
+                    --job-name      "$JOB_NAME" \
+                    --build-number  "$BUILD_NUMBER" \
+                    --jenkins-user  "$JENKINS_API_USER" \
+                    --jenkins-token "$JENKINS_API_TOKEN" \
+                    --slack-webhook "$SLACK_WEBHOOK" || true
+            '''
+        }
+        success {
+            echo "Pushed ${IMAGE_TAG}"
+        }
+    }
+}

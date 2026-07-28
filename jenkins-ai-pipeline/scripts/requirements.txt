@@ -1,0 +1,5 @@
+# Python dependencies for the AWS Bedrock-powered Jenkins intelligence scripts.
+# Install with: pip install -r scripts/requirements.txt
+
+requests>=2.31.0
+boto3>=1.34.0
